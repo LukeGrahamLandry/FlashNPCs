@@ -34,6 +34,7 @@ import java.util.*;
 @OnlyIn(Dist.CLIENT)
 public class ClientProxy extends CommonProxy {
 
+  public static List<String> GLOBAL_NPCS = new ArrayList<>();
   public static List<String> SAVED_NPCS = new ArrayList<>();
 
   Minecraft minecraft = Minecraft.getInstance();
@@ -254,8 +255,11 @@ public class ClientProxy extends CommonProxy {
     }
   }
 
-  public void loadSavedNpcs(List<String> savedNpcs) {
-    SAVED_NPCS = savedNpcs;
+  public void loadSavedNpcs(List<String> savedNpcs, boolean isGlobal) {
+    if (isGlobal)
+      GLOBAL_NPCS = savedNpcs;
+    else
+      SAVED_NPCS = savedNpcs;
   }
 
 }

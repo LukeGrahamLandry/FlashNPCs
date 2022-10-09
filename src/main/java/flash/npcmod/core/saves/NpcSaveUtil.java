@@ -6,6 +6,7 @@ import flash.npcmod.Main;
 import flash.npcmod.core.FileUtil;
 import net.minecraft.entity.player.ServerPlayerEntity;
 
+import javax.annotation.Nullable;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -62,13 +63,47 @@ public class NpcSaveUtil {
     return BuildResult.FAILED;
   }
 
-  public static boolean rename(String uuid, String previousName, String newName) {
-    String path = "saves/"+uuid;
-    File jsonFile = FileUtil.getJsonFile(path, previousName);
+  public static BuildResult buildGlobal(JsonObject jsonObject) {
+    if (!jsonObject.has("internalName")) {
+      jsonObject.addProperty("internalName", jsonObject.get("name").getAsString());
+    }
+    String name = jsonObject.get("internalName").getAsString();
+    Writer fw = null;
+    try {
+
+      File jsonFile = FileUtil.getFileFromGlobal("saves", name+".json");
+      if (jsonFile.exists()) {
+        return BuildResult.EXISTS;
+      }
+
+      fw = new OutputStreamWriter(new FileOutputStream(jsonFile), StandardCharsets.UTF_8);
+      fw.write(jsonObject.toString());
+
+      return BuildResult.SUCCESS;
+    } catch (Exception e) {
+      Main.LOGGER.warn("Could not build Saved NPC file " + name + ".json");
+    } finally {
+      try {
+        if (fw != null) {
+          fw.flush();
+          fw.close();
+        } else {
+          Main.LOGGER.debug("Could not close FileWriter for Saved NPC " + name + ".json, fw is null");
+        }
+      } catch (IOException e) {
+        Main.LOGGER.warn("Could not close FileWriter for Saved NPC " + name + ".json");
+      }
+    }
+    return BuildResult.FAILED;
+  }
+
+  public static boolean rename(String uuid, String previousName, String newName, boolean isGlobal) {
+    String path = isGlobal ? "saves" : "saves/"+uuid;
+    File jsonFile = isGlobal ? FileUtil.getFileFromGlobal(path, previousName+".json") : FileUtil.getJsonFileForWriting(path, previousName);
     Writer fw = null;
     if (jsonFile.exists()) {
       try {
-        File newFile = FileUtil.getJsonFile(path, newName);
+        File newFile = isGlobal ? FileUtil.getFileFromGlobal(path, newName+".json") : FileUtil.getJsonFileForWriting(path, newName);
         boolean success = jsonFile.renameTo(newFile);
 
         if (success) {
@@ -100,28 +135,36 @@ public class NpcSaveUtil {
     return false;
   }
 
-  public static boolean delete(ServerPlayerEntity sender, String name) {
-    String path = "saves/"+sender.getCachedUniqueIdString();
-    File file = FileUtil.getJsonFile(path, name);
-    return file.exists() && file.delete();
+  public static boolean delete(ServerPlayerEntity sender, String name, boolean isGlobal) {
+    File file = isGlobal ? FileUtil.getFileFromGlobal("saves", name+".json") : FileUtil.getJsonFileForWriting("saves/"+sender.getCachedUniqueIdString(), name);
+    return file != null && file.exists() && file.delete();
+  }
+
+  public static List<String> loadGlobal() {
+    List<String> savedNpcs = new ArrayList<>();
+    File[] globalFiles = FileUtil.getAllFromGlobal("saves");
+    putFileArrayIntoList(globalFiles, savedNpcs);
+    return savedNpcs;
   }
 
   public static List<String> load(String uuid) {
     List<String> savedNpcs = new ArrayList<>();
-    File folder = FileUtil.readDirectory(FileUtil.getWorldName()+"/"+Main.MODID+"/saves/"+uuid);
-    File[] files = folder.listFiles();
+    File[] worldFiles = FileUtil.getAllFromWorld("saves/"+uuid);
+    putFileArrayIntoList(worldFiles, savedNpcs);
+    return savedNpcs;
+  }
+
+  private static void putFileArrayIntoList(@Nullable File[] files, List<String> list) {
     if (files != null) {
       for (File file : files) {
         try {
           InputStreamReader is = new InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8);
-          String jsonString = new Gson().fromJson(is, JsonObject.class).toString();
-          savedNpcs.add(jsonString);
+          String jsonString = FileUtil.GSON.fromJson(is, JsonObject.class).toString();
+          list.add(jsonString);
           is.close();
-        } catch (Exception ignored) {
-        }
+        } catch (Exception ignored) {}
       }
     }
-    return savedNpcs;
   }
 
 }

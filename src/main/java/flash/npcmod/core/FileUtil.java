@@ -53,4 +53,35 @@ public class FileUtil {
     return Main.PROXY.shouldSaveInWorld();
   }
 
+  public static File[] getAllFiles(String path) {
+    File[] globalDirectory = getAllFromGlobal(path);
+    File[] worldDirectory = getAllFromWorld(path);
+
+    File[] out = new File[globalDirectory.length + worldDirectory.length];
+    System.arraycopy(globalDirectory, 0, out, 0, globalDirectory.length);
+    System.arraycopy(worldDirectory, 0, out, globalDirectory.length, worldDirectory.length);
+
+    return out;
+  }
+
+  public static File[] getAllFromGlobal(String path) {
+    try {
+      return FileUtil.getOrCreateDirectory(FileUtil.getGlobalDirectoryName()+"/"+path).listFiles();
+    }
+    catch (Exception e) {
+      e.printStackTrace();
+    }
+    return new File[0];
+  }
+
+  public static File[] getAllFromWorld(String path) {
+    try {
+      return FileUtil.getOrCreateDirectory((shouldGetFromWorld() ? FileUtil.getWorldDirectory() + "/" : "") + Main.MODID + "/" + path).listFiles();
+    }
+    catch (Exception e) {
+      e.printStackTrace();
+    }
+    return new File[0];
+  }
+
 }

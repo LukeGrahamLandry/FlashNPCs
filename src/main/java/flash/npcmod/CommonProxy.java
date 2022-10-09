@@ -45,6 +45,6 @@ public class CommonProxy {
   public SSyncQuestCapability decodeQuestCapabilitySync(PacketBuffer buf) { return new SSyncQuestCapability(); }
   public void syncTrades(int entityid, TradeOffers tradeOffers) {}
 
-  public void loadSavedNpcs(List<String> savedNpcs) {}
+  public void loadSavedNpcs(List<String> savedNpcs, boolean isGlobal) {}
 
 }

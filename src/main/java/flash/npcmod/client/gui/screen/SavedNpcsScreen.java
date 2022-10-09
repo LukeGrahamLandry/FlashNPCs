@@ -1,5 +1,6 @@
 package flash.npcmod.client.gui.screen;
 
+import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.mojang.blaze3d.matrix.MatrixStack;
 import flash.npcmod.ClientProxy;
@@ -33,18 +34,22 @@ import java.util.stream.Collectors;
 
 public class SavedNpcsScreen extends Screen {
 
+  private static final Gson GSON = new Gson();
+
   private int selectedIndex;
-  private int renameResultTick;
-  private int renameResultColor;
-  private String renameResult;
+  private boolean isGlobalPage;
+  private int resultTick;
+  private int resultColor;
+  private String resultText;
   private final String pos;
   private String newInternalName;
   private NpcEntity selected;
 
-  private Button placeButton, renameButton, deleteButton;
-  private TextFieldWidget renameTextBox;
+  private Button placeButton, renameButton, deleteButton, saveGlobalButton;
+  private EditBox renameTextBox;
+  private Checkbox globalCheckbox;
 
-  private List<JSONObject> savedNpcs;
+  private List<JsonObject> savedNpcs, globalNpcs;
   private SavedNpcsScreen.NpcList list;
 
   public SavedNpcsScreen(String pos) {
@@ -52,13 +57,15 @@ public class SavedNpcsScreen extends Screen {
     this.pos = pos;
     this.newInternalName = "";
     savedNpcs = new ArrayList<>();
-    ClientProxy.SAVED_NPCS.forEach(s -> savedNpcs.add(new JSONObject(s)));
+    globalNpcs = new ArrayList<>();
+    ClientProxy.GLOBAL_NPCS.forEach(s -> globalNpcs.add(GSON.fromJson(s, JsonObject.class)));
+    ClientProxy.SAVED_NPCS.forEach(s -> savedNpcs.add(GSON.fromJson(s, JsonObject.class)));
   }
 
   @Override
   protected void init() {
-    this.list = new SavedNpcsScreen.NpcList();
-    this.addListener(this.list);
+    this.list = new NpcList(isGlobalPage);
+    this.addWidget(this.list);
     if (this.selected != null) {
       this.list.setSelected(list.getEventListeners().get(selectedIndex));
     }
@@ -78,8 +85,9 @@ public class SavedNpcsScreen extends Screen {
     }));
     this.deleteButton = this.addButton(new Button(5+100+5, buttonY, 100, 20, new StringTextComponent("Delete"), onPress -> {
       if (list.getSelected() != null) {
-        PacketDispatcher.sendToServer(new CHandleSavedNpc(list.getSelected().name.getString()));
-        savedNpcs.remove(list.getSelectedIndex());
+        PacketDispatcher.sendToServer(new CHandleSavedNpc(list.getSelected().name.getString(), isGlobalPage));
+        List<JsonObject> jsonList = isGlobalPage ? globalNpcs : savedNpcs;
+        jsonList.remove(list.getSelectedIndex());
         list.update();
         selected = null;
       }
@@ -87,27 +95,47 @@ public class SavedNpcsScreen extends Screen {
     this.renameButton = this.addButton(new Button(width - 5 - 100, buttonY, 100, 20, new StringTextComponent("Rename"), onPress -> {
       if (list.getSelected() != null) {
         String prevname = list.getSelected().name.getString();
-        boolean exists = savedNpcs.stream().filter(json -> json.getString("internalName").equals(newInternalName)).count() > 0;
+        List<JsonObject> jsonList = isGlobalPage ? globalNpcs : savedNpcs;
+        boolean exists = jsonList.stream().anyMatch(json -> json.get("internalName").getAsString().equals(newInternalName));
         if (!exists) {
-          list.getSelected().asJson.put("internalName", newInternalName);
-          list.getSelected().name = new StringTextComponent(newInternalName);
-          PacketDispatcher.sendToServer(new CHandleSavedNpc(prevname, newInternalName));
-          renameResult = "Success!";
-          renameResultColor = 0x00FF00;
+          list.getSelected().asJson.addProperty("internalName", newInternalName);
+          list.getSelected().name = new TextComponent(newInternalName);
+          PacketDispatcher.sendToServer(new CHandleSavedNpc(prevname, newInternalName, isGlobalPage));
+          setResult("Success!", 0x00FF00);
         }
         else {
           Main.LOGGER.warn("Tried to rename saved npc to an already existing name");
-          renameResult = "A Saved NPC with this name already exists!";
-          renameResultColor = 0xFF0000;
+          setResult("A Saved NPC with this name already exists!", 0xFF0000);
         }
-        renameResultTick = 40;
       }
     }));
-    this.renameTextBox = this.addButton(new TextFieldWidget(font, 5+105+105, buttonY, width - 110 - 110 - 105, 20, StringTextComponent.EMPTY));
+    this.saveGlobalButton = this.addRenderableWidget(new Button(width - 5 - 100, 5, 100, 20, new TextComponent("Save to Global"), btn -> {
+      if (list.getSelected() != null) {
+        String name = list.getSelected().name.getString();
+        boolean exists = globalNpcs.stream().anyMatch(json -> json.get("internalName").getAsString().equals(name));
+        if (!exists) {
+          PacketDispatcher.sendToServer(new CHandleSavedNpc(list.getSelected().asJson));
+          globalNpcs.add(list.getSelected().asJson);
+          setResult("Success!", 0x00FF00);
+        }
+        else {
+          setResult("A Global NPC with this name already exists!", 0xFF0000);
+        }
+      }
+    }));
+    this.saveGlobalButton.active = !isGlobalPage;
+    this.globalCheckbox = this.addRenderableWidget(new Checkbox(saveGlobalButton.x - 5 - 20, 5, 20, 20, TextComponent.EMPTY, isGlobalPage, false));
+    this.renameTextBox = this.addRenderableWidget(new EditBox(font, 5+105+105, buttonY, width - 110 - 110 - 105, 20, TextComponent.EMPTY));
     this.renameTextBox.setResponder(this::setNewInternalName);
     this.renameTextBox.setMaxStringLength(50);
     this.renameTextBox.setText(this.newInternalName);
     this.updateButtonValidity(this.list.getSelected() != null);
+  }
+
+  private void setResult(String text, int color) {
+    this.resultText = text;
+    this.resultColor = color;
+    this.resultTick = 40;
   }
 
   public void setNewInternalName(String newInternalName) {
@@ -145,8 +173,8 @@ public class SavedNpcsScreen extends Screen {
 
     super.render(matrixStack, mouseX, mouseY, partialTicks);
 
-    if (renameResultTick > 0) {
-      drawCenteredString(matrixStack, this.font, renameResult, this.width / 2, this.height / 2 - font.FONT_HEIGHT / 2, renameResultColor);
+    if (resultTick > 0) {
+      drawCenteredString(stack, this.font, resultText, this.width / 2, this.height / 2 - font.lineHeight / 2, resultColor);
     }
   }
 
@@ -180,13 +208,24 @@ public class SavedNpcsScreen extends Screen {
 
   @Override
   public void tick() {
-    if (renameResultTick > 0) {
-      renameResultTick--;
+    if (resultTick > 0) {
+      resultTick--;
+    }
+    this.saveGlobalButton.active = !isGlobalPage;
+    if (globalCheckbox.selected() != isGlobalPage) {
+      isGlobalPage = globalCheckbox.selected();
+      this.selected = null;
+      this.selectedIndex = 0;
+      this.updateButtonValidity(false);
+      this.renameTextBox.setValue("");
+      removeWidget(list);
+      list = new NpcList(isGlobalPage);
+      addWidget(list);
     }
   }
 
   public boolean mouseScrolled(double p_96381_, double p_96382_, double p_96383_) {
-    return this.list.mouseScrolled(p_96381_, p_96382_, p_96383_);
+    return list.mouseScrolled(p_96381_, p_96382_, p_96383_);
   }
 
   public void updateButtonValidity(boolean p_96450_) {
@@ -214,14 +253,24 @@ public class SavedNpcsScreen extends Screen {
   }
 
   @OnlyIn(Dist.CLIENT)
-  class NpcList extends ExtendedList<SavedNpcsScreen.NpcList.Entry> {
-    public NpcList() {
+  class NpcList extends ObjectSelectionList<SavedNpcsScreen.NpcList.Entry> {
+
+    public NpcList(boolean isGlobalNpcsList) {
       super(SavedNpcsScreen.this.minecraft, SavedNpcsScreen.this.width, SavedNpcsScreen.this.height, 80, SavedNpcsScreen.this.height - 37, 24);
 
-      List<SavedNpcsScreen.NpcInfo> savedNpcs = SavedNpcsScreen.this.savedNpcs
-              .stream()
-              .map(NpcInfo::fromJson)
-              .collect(Collectors.toList());
+
+      List<SavedNpcsScreen.NpcInfo> savedNpcs;
+      if (isGlobalNpcsList) {
+        savedNpcs = SavedNpcsScreen.this.globalNpcs
+                .stream()
+                .map(NpcInfo::fromJson)
+                .toList();
+      } else {
+        savedNpcs = SavedNpcsScreen.this.savedNpcs
+                .stream()
+                .map(NpcInfo::fromJson)
+                .toList();
+      }
       for(SavedNpcsScreen.NpcInfo savednpcsscreen$npcinfo : savedNpcs) {
         this.addEntry(new SavedNpcsScreen.NpcList.Entry(savednpcsscreen$npcinfo));
       }
@@ -237,10 +286,19 @@ public class SavedNpcsScreen extends Screen {
     }
 
     protected void update() {
-      List<SavedNpcsScreen.NpcInfo> savedNpcs = SavedNpcsScreen.this.savedNpcs
-              .stream()
-              .map(NpcInfo::fromJson)
-              .collect(Collectors.toList());
+      List<SavedNpcsScreen.NpcInfo> savedNpcs;
+      if (SavedNpcsScreen.this.isGlobalPage) {
+        savedNpcs = SavedNpcsScreen.this.globalNpcs
+                .stream()
+                .map(NpcInfo::fromJson)
+                .toList();
+      }
+      else {
+        savedNpcs = SavedNpcsScreen.this.savedNpcs
+                        .stream()
+                        .map(NpcInfo::fromJson)
+                        .toList();
+      }
       clearEntries();
       for(SavedNpcsScreen.NpcInfo savednpcsscreen$npcinfo : savedNpcs) {
         this.addEntry(new SavedNpcsScreen.NpcList.Entry(savednpcsscreen$npcinfo));
