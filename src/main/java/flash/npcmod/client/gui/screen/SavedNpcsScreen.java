@@ -15,12 +15,15 @@ import net.minecraft.client.gui.screen.FlatPresetsScreen;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.screen.inventory.InventoryScreen;
 import net.minecraft.client.gui.widget.TextFieldWidget;
+import net.minecraft.client.gui.widget.ToggleWidget;
 import net.minecraft.client.gui.widget.button.Button;
+import net.minecraft.client.gui.widget.button.CheckboxButton;
 import net.minecraft.client.gui.widget.list.ExtendedList;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.text.ITextComponent;
 import net.minecraft.util.text.StringTextComponent;
+import net.minecraft.util.text.TextComponent;
 import net.minecraft.util.text.TranslationTextComponent;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
@@ -33,9 +36,6 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 public class SavedNpcsScreen extends Screen {
-
-  private static final Gson GSON = new Gson();
-
   private int selectedIndex;
   private boolean isGlobalPage;
   private int resultTick;
@@ -46,10 +46,10 @@ public class SavedNpcsScreen extends Screen {
   private NpcEntity selected;
 
   private Button placeButton, renameButton, deleteButton, saveGlobalButton;
-  private EditBox renameTextBox;
-  private Checkbox globalCheckbox;
+  private TextFieldWidget renameTextBox;
+  private CheckboxButton globalCheckbox;
 
-  private List<JsonObject> savedNpcs, globalNpcs;
+  private List<JSONObject> savedNpcs, globalNpcs;
   private SavedNpcsScreen.NpcList list;
 
   public SavedNpcsScreen(String pos) {
@@ -58,14 +58,14 @@ public class SavedNpcsScreen extends Screen {
     this.newInternalName = "";
     savedNpcs = new ArrayList<>();
     globalNpcs = new ArrayList<>();
-    ClientProxy.GLOBAL_NPCS.forEach(s -> globalNpcs.add(GSON.fromJson(s, JsonObject.class)));
-    ClientProxy.SAVED_NPCS.forEach(s -> savedNpcs.add(GSON.fromJson(s, JsonObject.class)));
+    ClientProxy.GLOBAL_NPCS.forEach(s -> globalNpcs.add(new JSONObject(s)));
+    ClientProxy.SAVED_NPCS.forEach(s -> savedNpcs.add(new JSONObject(s)));
   }
 
   @Override
   protected void init() {
     this.list = new NpcList(isGlobalPage);
-    this.addWidget(this.list);
+    this.addListener(this.list);
     if (this.selected != null) {
       this.list.setSelected(list.getEventListeners().get(selectedIndex));
     }
@@ -86,7 +86,7 @@ public class SavedNpcsScreen extends Screen {
     this.deleteButton = this.addButton(new Button(5+100+5, buttonY, 100, 20, new StringTextComponent("Delete"), onPress -> {
       if (list.getSelected() != null) {
         PacketDispatcher.sendToServer(new CHandleSavedNpc(list.getSelected().name.getString(), isGlobalPage));
-        List<JsonObject> jsonList = isGlobalPage ? globalNpcs : savedNpcs;
+        List<JSONObject> jsonList = isGlobalPage ? globalNpcs : savedNpcs;
         jsonList.remove(list.getSelectedIndex());
         list.update();
         selected = null;
@@ -95,11 +95,11 @@ public class SavedNpcsScreen extends Screen {
     this.renameButton = this.addButton(new Button(width - 5 - 100, buttonY, 100, 20, new StringTextComponent("Rename"), onPress -> {
       if (list.getSelected() != null) {
         String prevname = list.getSelected().name.getString();
-        List<JsonObject> jsonList = isGlobalPage ? globalNpcs : savedNpcs;
-        boolean exists = jsonList.stream().anyMatch(json -> json.get("internalName").getAsString().equals(newInternalName));
+        List<JSONObject> jsonList = isGlobalPage ? globalNpcs : savedNpcs;
+        boolean exists = jsonList.stream().anyMatch(json -> json.getString("internalName").equals(newInternalName));
         if (!exists) {
-          list.getSelected().asJson.addProperty("internalName", newInternalName);
-          list.getSelected().name = new TextComponent(newInternalName);
+          list.getSelected().asJson.put("internalName", newInternalName);
+          list.getSelected().name = new StringTextComponent(newInternalName);
           PacketDispatcher.sendToServer(new CHandleSavedNpc(prevname, newInternalName, isGlobalPage));
           setResult("Success!", 0x00FF00);
         }
@@ -109,10 +109,10 @@ public class SavedNpcsScreen extends Screen {
         }
       }
     }));
-    this.saveGlobalButton = this.addRenderableWidget(new Button(width - 5 - 100, 5, 100, 20, new TextComponent("Save to Global"), btn -> {
+    this.saveGlobalButton = this.addButton(new Button(width - 5 - 100, 5, 100, 20, new StringTextComponent("Save to Global"), btn -> {
       if (list.getSelected() != null) {
         String name = list.getSelected().name.getString();
-        boolean exists = globalNpcs.stream().anyMatch(json -> json.get("internalName").getAsString().equals(name));
+        boolean exists = globalNpcs.stream().anyMatch(json -> json.getString("internalName").equals(name));
         if (!exists) {
           PacketDispatcher.sendToServer(new CHandleSavedNpc(list.getSelected().asJson));
           globalNpcs.add(list.getSelected().asJson);
@@ -124,8 +124,8 @@ public class SavedNpcsScreen extends Screen {
       }
     }));
     this.saveGlobalButton.active = !isGlobalPage;
-    this.globalCheckbox = this.addRenderableWidget(new Checkbox(saveGlobalButton.x - 5 - 20, 5, 20, 20, TextComponent.EMPTY, isGlobalPage, false));
-    this.renameTextBox = this.addRenderableWidget(new EditBox(font, 5+105+105, buttonY, width - 110 - 110 - 105, 20, TextComponent.EMPTY));
+    this.globalCheckbox = this.addButton(new CheckboxButton(saveGlobalButton.x - 5 - 20, 5, 20, 20, StringTextComponent.EMPTY, isGlobalPage, false));
+    this.renameTextBox = this.addButton(new TextFieldWidget(font, 5+105+105, buttonY, width - 110 - 110 - 105, 20, StringTextComponent.EMPTY));
     this.renameTextBox.setResponder(this::setNewInternalName);
     this.renameTextBox.setMaxStringLength(50);
     this.renameTextBox.setText(this.newInternalName);
@@ -174,7 +174,7 @@ public class SavedNpcsScreen extends Screen {
     super.render(matrixStack, mouseX, mouseY, partialTicks);
 
     if (resultTick > 0) {
-      drawCenteredString(stack, this.font, resultText, this.width / 2, this.height / 2 - font.lineHeight / 2, resultColor);
+      drawCenteredString(matrixStack, this.font, resultText, this.width / 2, this.height / 2 - font.FONT_HEIGHT / 2, resultColor);
     }
   }
 
@@ -212,15 +212,15 @@ public class SavedNpcsScreen extends Screen {
       resultTick--;
     }
     this.saveGlobalButton.active = !isGlobalPage;
-    if (globalCheckbox.selected() != isGlobalPage) {
-      isGlobalPage = globalCheckbox.selected();
+    if (globalCheckbox.isChecked() != isGlobalPage) {
+      isGlobalPage = globalCheckbox.isChecked();
       this.selected = null;
       this.selectedIndex = 0;
       this.updateButtonValidity(false);
-      this.renameTextBox.setValue("");
-      removeWidget(list);
+      this.renameTextBox.setText("");
+      this.children.remove(list);
       list = new NpcList(isGlobalPage);
-      addWidget(list);
+      this.addListener(list);
     }
   }
 
@@ -253,7 +253,7 @@ public class SavedNpcsScreen extends Screen {
   }
 
   @OnlyIn(Dist.CLIENT)
-  class NpcList extends ObjectSelectionList<SavedNpcsScreen.NpcList.Entry> {
+  class NpcList extends ExtendedList<SavedNpcsScreen.NpcList.Entry> {
 
     public NpcList(boolean isGlobalNpcsList) {
       super(SavedNpcsScreen.this.minecraft, SavedNpcsScreen.this.width, SavedNpcsScreen.this.height, 80, SavedNpcsScreen.this.height - 37, 24);
@@ -264,12 +264,12 @@ public class SavedNpcsScreen extends Screen {
         savedNpcs = SavedNpcsScreen.this.globalNpcs
                 .stream()
                 .map(NpcInfo::fromJson)
-                .toList();
+                .collect(Collectors.toList());
       } else {
         savedNpcs = SavedNpcsScreen.this.savedNpcs
                 .stream()
                 .map(NpcInfo::fromJson)
-                .toList();
+                .collect(Collectors.toList());
       }
       for(SavedNpcsScreen.NpcInfo savednpcsscreen$npcinfo : savedNpcs) {
         this.addEntry(new SavedNpcsScreen.NpcList.Entry(savednpcsscreen$npcinfo));
@@ -291,13 +291,13 @@ public class SavedNpcsScreen extends Screen {
         savedNpcs = SavedNpcsScreen.this.globalNpcs
                 .stream()
                 .map(NpcInfo::fromJson)
-                .toList();
+                .collect(Collectors.toList());
       }
       else {
         savedNpcs = SavedNpcsScreen.this.savedNpcs
                         .stream()
                         .map(NpcInfo::fromJson)
-                        .toList();
+                        .collect(Collectors.toList());
       }
       clearEntries();
       for(SavedNpcsScreen.NpcInfo savednpcsscreen$npcinfo : savedNpcs) {

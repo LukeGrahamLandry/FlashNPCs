@@ -5,12 +5,14 @@ import com.google.gson.JsonObject;
 import flash.npcmod.Main;
 import flash.npcmod.core.FileUtil;
 import net.minecraft.entity.player.ServerPlayerEntity;
+import org.json.JSONObject;
 
 import javax.annotation.Nullable;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 public class NpcSaveUtil {
 
@@ -63,11 +65,11 @@ public class NpcSaveUtil {
     return BuildResult.FAILED;
   }
 
-  public static BuildResult buildGlobal(JsonObject jsonObject) {
+  public static BuildResult buildGlobal(JSONObject jsonObject) {
     if (!jsonObject.has("internalName")) {
-      jsonObject.addProperty("internalName", jsonObject.get("name").getAsString());
+      jsonObject.put("internalName", jsonObject.getString("name"));
     }
-    String name = jsonObject.get("internalName").getAsString();
+    String name = jsonObject.getString("internalName");
     Writer fw = null;
     try {
 
@@ -144,6 +146,9 @@ public class NpcSaveUtil {
     List<String> savedNpcs = new ArrayList<>();
     File[] globalFiles = FileUtil.getAllFromGlobal("saves");
     putFileArrayIntoList(globalFiles, savedNpcs);
+    for (String npc : savedNpcs) {  // TODO: remove
+      Main.LOGGER.debug("Global: " + npc);
+    }
     return savedNpcs;
   }
 
@@ -151,6 +156,9 @@ public class NpcSaveUtil {
     List<String> savedNpcs = new ArrayList<>();
     File[] worldFiles = FileUtil.getAllFromWorld("saves/"+uuid);
     putFileArrayIntoList(worldFiles, savedNpcs);
+    for (String npc : savedNpcs) {  // TODO: remove
+      Main.LOGGER.debug("World: " + npc);
+    }
     return savedNpcs;
   }
 
@@ -159,7 +167,8 @@ public class NpcSaveUtil {
       for (File file : files) {
         try {
           InputStreamReader is = new InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8);
-          String jsonString = FileUtil.GSON.fromJson(is, JsonObject.class).toString();
+          String fileContents = new BufferedReader(is).lines().collect(Collectors.joining("\n"));;
+          String jsonString = new JSONObject(fileContents).toString();  // skips if it's not a json file?
           list.add(jsonString);
           is.close();
         } catch (Exception ignored) {}

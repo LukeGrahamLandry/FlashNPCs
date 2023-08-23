@@ -2,13 +2,64 @@ package flash.npcmod.core;
 
 import flash.npcmod.Main;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.world.World;
 import net.minecraftforge.fml.server.ServerLifecycleHooks;
 
 import javax.annotation.Nullable;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.FileSystem;
+import java.nio.file.FileSystems;
+import java.nio.file.Path;
 
 public class FileUtil {
+  private static final String SEPARATOR = FileSystems.getDefault().getSeparator();
+
+  public static String getGlobalDirectoryName() {
+    return Main.MODID + "/global";
+  }
+
+  @Nullable
+  public static File getFileFromGlobal(String path, String name) {
+    File directory = getOrCreateDirectory(getGlobalDirectoryName() + SEPARATOR + path);
+    try {
+      return new File(directory.getCanonicalPath(), name);
+    } catch (IOException e) {
+      Main.LOGGER.warn("Could not get file " + path + SEPARATOR + name);
+    }
+    return null;
+  }
+
+
+  public static File getOrCreateDirectory(String path) {
+    File directory = new File(".", path);
+    if (!directory.exists()) {
+      directory.mkdirs();
+    }
+    return directory;
+  }
+
+  /**
+   * Gets the path to the current world. If for some reason we get an IOException,
+   * this'll grab the world name instead of the world directory.
+   *
+   * @return The path from "." to the current world
+   */
+  public static String getWorldDirectory() {
+    MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
+    try {
+      return server.getDataDirectory().getCanonicalPath();
+    } catch (IOException e) {
+      Main.LOGGER.warn("Error while getting world directory, falling back to the old method");
+      e.printStackTrace();
+      String worldName = server.getServerConfiguration().getWorldName();
+      if (server.isDedicatedServer()) {
+        return worldName;
+      }
+      return "saves" + SEPARATOR + worldName;
+    }
+  }
+
 
   public static String getWorldName() {
     MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
@@ -16,7 +67,7 @@ public class FileUtil {
     if (server.isDedicatedServer()) {
       return worldName;
     }
-    return "saves/"+worldName;
+    return "saves" + SEPARATOR+worldName;
   }
 
   @Nullable
@@ -66,7 +117,9 @@ public class FileUtil {
 
   public static File[] getAllFromGlobal(String path) {
     try {
-      return FileUtil.getOrCreateDirectory(FileUtil.getGlobalDirectoryName()+"/"+path).listFiles();
+      File dir = FileUtil.getOrCreateDirectory(FileUtil.getGlobalDirectoryName()+"/"+path);
+      Main.LOGGER.debug("Loading global npcs from " + dir.getCanonicalPath());  // TODO: remove
+      return dir.listFiles();
     }
     catch (Exception e) {
       e.printStackTrace();
@@ -76,12 +129,45 @@ public class FileUtil {
 
   public static File[] getAllFromWorld(String path) {
     try {
-      return FileUtil.getOrCreateDirectory((shouldGetFromWorld() ? FileUtil.getWorldDirectory() + "/" : "") + Main.MODID + "/" + path).listFiles();
+      File dir = FileUtil.getOrCreateDirectory((shouldGetFromWorld() ? FileUtil.getWorldDirectory() + "/" : "") + Main.MODID + "/" + path);
+      Main.LOGGER.debug("Loading world npcs from " + dir.getCanonicalPath());  // TODO: remove
+      return dir.listFiles();
     }
     catch (Exception e) {
       e.printStackTrace();
     }
     return new File[0];
+  }
+
+  public static boolean shouldGetFromWorld() {
+    return Main.PROXY.shouldSaveInWorld();
+  }
+
+  @Nullable
+  public static File getFileFromPath(String path, String name) {
+    if (shouldGetFromWorld()) {
+      path = getWorldDirectory() + SEPARATOR + path;
+    }
+    File directory = getOrCreateDirectory(path);
+    try {
+      return new File(directory.getCanonicalPath(), name);
+    } catch (IOException e) {
+      Main.LOGGER.warn("Could not get file " + path + SEPARATOR + name);
+    }
+    return null;
+  }
+
+
+  private static File getFileForWriting(String path, String name, String extension) {
+    if (!name.endsWith(extension)) {
+      name = name + extension;
+    }
+    path = Main.MODID + SEPARATOR + path;
+    return FileUtil.getFileFromPath(path, name);
+  }
+
+  public static File getJsonFileForWriting(String path, String name) {
+    return getFileForWriting(path, name, ".json");
   }
 
 }
