@@ -146,9 +146,6 @@ public class NpcSaveUtil {
     List<String> savedNpcs = new ArrayList<>();
     File[] globalFiles = FileUtil.getAllFromGlobal("saves");
     putFileArrayIntoList(globalFiles, savedNpcs);
-    for (String npc : savedNpcs) {  // TODO: remove
-      Main.LOGGER.debug("Global: " + npc);
-    }
     return savedNpcs;
   }
 
@@ -156,9 +153,6 @@ public class NpcSaveUtil {
     List<String> savedNpcs = new ArrayList<>();
     File[] worldFiles = FileUtil.getAllFromWorld("saves/"+uuid);
     putFileArrayIntoList(worldFiles, savedNpcs);
-    for (String npc : savedNpcs) {  // TODO: remove
-      Main.LOGGER.debug("World: " + npc);
-    }
     return savedNpcs;
   }
 

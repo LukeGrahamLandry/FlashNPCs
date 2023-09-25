@@ -3,6 +3,7 @@ package flash.npcmod.core;
 import flash.npcmod.Main;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.World;
+import net.minecraft.world.storage.FolderName;
 import net.minecraftforge.fml.server.ServerLifecycleHooks;
 
 import javax.annotation.Nullable;
@@ -47,8 +48,11 @@ public class FileUtil {
    */
   public static String getWorldDirectory() {
     MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
+
     try {
-      return server.getDataDirectory().getCanonicalPath();
+      String rootPath = server.getDataDirectory().getCanonicalPath();
+      String worldPath = server.func_240776_a_(FolderName.DOT).toFile().getCanonicalPath();
+      return worldPath.replace(rootPath + SEPARATOR, "");
     } catch (IOException e) {
       Main.LOGGER.warn("Error while getting world directory, falling back to the old method");
       e.printStackTrace();
@@ -118,7 +122,6 @@ public class FileUtil {
   public static File[] getAllFromGlobal(String path) {
     try {
       File dir = FileUtil.getOrCreateDirectory(FileUtil.getGlobalDirectoryName()+"/"+path);
-      Main.LOGGER.debug("Loading global npcs from " + dir.getCanonicalPath());  // TODO: remove
       return dir.listFiles();
     }
     catch (Exception e) {
@@ -130,7 +133,6 @@ public class FileUtil {
   public static File[] getAllFromWorld(String path) {
     try {
       File dir = FileUtil.getOrCreateDirectory((shouldGetFromWorld() ? FileUtil.getWorldDirectory() + "/" : "") + Main.MODID + "/" + path);
-      Main.LOGGER.debug("Loading world npcs from " + dir.getCanonicalPath());  // TODO: remove
       return dir.listFiles();
     }
     catch (Exception e) {
